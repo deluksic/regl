@@ -2241,7 +2241,7 @@ function createTextureSet (
       if ('z' in options) {
         image.zOffset = options.z | 0
       }
-      if (isPixelData(options.data)) {
+      if (isPixelData(options.data) || isVideoFrame(options.data)) {
         data = options.data
       }
     }
@@ -2259,6 +2259,7 @@ function createTextureSet (
     } else if (!data) {
       image.width = image.width || 1
       image.height = image.height || 1
+      image.depth = image.depth || 1
       image.channels = image.channels || 4
     } else if (isTypedArray(data)) {
       image.channels = image.channels || 4
@@ -2375,7 +2376,7 @@ function createTextureSet (
     if (target === GL_TEXTURE_3D) {
       var depth = info.depth
       if (element) {
-        throw new Error('Texture3D from element is not supported.')
+        throw new Error('Texture3D from element is not supported')
       } else if (info.compressed) {
         throw new Error('Compressed Texture3D is not supported.')
       } else if (info.needsCopy) {
@@ -2414,7 +2415,7 @@ function createTextureSet (
     setFlags(info)
     if (target === GL_TEXTURE_3D) {
       if (element) {
-        throw new Error('Texture3D from element is not supported')
+        gl.texSubImage3D(target, miplevel, x, y, z, width, height, 1, format, type, element)
       } else if (info.compressed) {
         throw new Error('Compressed Texture3D not supported')
       } else if (info.needsCopy) {
