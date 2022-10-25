@@ -573,6 +573,7 @@ module.exports = function wrapREGL (args) {
       return elementState.create(options, false)
     },
     texture: textureState.create2D,
+    texture3D: textureState.create3D,
     cube: textureState.createCube,
     renderbuffer: renderbufferState.create,
     framebuffer: framebufferState.create,

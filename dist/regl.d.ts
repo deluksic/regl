@@ -136,11 +136,11 @@ declare namespace REGL {
      */
 
     /* Retrieve the property `name` passed when the draw command is executed. */
-    prop<Props extends {}, Key extends keyof Props>(name: Key): DynamicVariable<Props[Key]>;
+    prop<Props extends {}, Key extends keyof Props = keyof Props>(name: Key): DynamicVariable<Props[Key]>;
     /* Retrieve the context property `name` when the draw command is executed. */
-    context<Context extends REGL.DefaultContext, K extends keyof Context>(name: K): DynamicVariable<Context[K]>;
+    context<Context extends REGL.DefaultContext, K extends keyof Context = keyof Context>(name: K): DynamicVariable<Context[K]>;
     /* Retrieve the property `name` of the object in whose context the draw command is executing. */
-    this<This extends {}, Key extends keyof This>(name: Key): DynamicVariable<This[Key]>;
+    this<This extends {}, Key extends keyof This = keyof This>(name: Key): DynamicVariable<This[Key]>;
 
     /* Drawing */
 
@@ -171,7 +171,8 @@ declare namespace REGL {
     texture(data: REGL.TextureImageData): REGL.Texture2D;
     /* Creates a 2D Texture using creation `options`. */
     texture(options: REGL.Texture2DOptions): REGL.Texture2D;
-
+    /* Creates a 3D Texture using creation `options`. */
+    texture3D(options: REGL.Texture3DOptions): REGL.Texture3D;
     /* Creates a cube-map texture with faces of dimensions 1 x 1. */
     cube(): REGL.TextureCube;
     /* Creates a cube-map texture with faces of dimensions `radius` x `radius`. */
@@ -1113,6 +1114,10 @@ declare namespace REGL {
     "luminance" |
     /* `gl.LUMINANCE_ALPHA`; channels: 2; types: 'uint8', 'half float', 'float' */
     "luminance alpha" |
+    /* `gl.RED`; channels: 1; types: 'uint8', 'uint16', 'half float', 'float' */
+    "red" |
+    /* `gl.RG`; channels: 2; types: 'uint8', 'half float', 'float' */
+    "rg" |
     /* `gl.RGB`; channels: 3; types: 'uint8', 'half float', 'float' */
     "rgb" |
     /* `gl.RGBA`; channels: 4; types: 'uint8', 'half float', 'float' */
@@ -1294,6 +1299,37 @@ declare namespace REGL {
     premultiplyAlpha?: boolean;
     /* Sets the WebGL color space flag for pixel unpacking. Default: 'none' */
     colorSpace?: REGL.TextureColorSpaceType;
+  }
+
+  interface Texture3DOptions extends Omit<Texture2DOptions, 'shape'> {
+    shape?: [number, number, number] | [number, number, number, REGL.TextureChannelsType];
+    wrapR?: REGL.TextureWrapModeType
+    depth?: number
+  }
+
+  interface Texture3D extends Texture {
+    /* Reinitializes the texture in place with dimensions 1 x 1. */
+    (): REGL.Texture3D;
+    /* Reinitializes the texture in place using creation `options`. */
+    (options: REGL.Texture3DOptions): REGL.Texture3D;
+
+    /**
+     * Replaces the part of texture with new data.
+     *
+     * @param data      image data object, similar to arguments for the texture constructor
+     * @param x         horizontal offset of the image within the texture (Default: `0`)
+     * @param y         vertical offset of the image within the texture (Default: `0`)
+     * @param level     mipmap level of the texture to modify (Default: `0`)
+     */
+    /* Replaces the area at offset `x` (default: 0), `y` (default: 0), with `data`. */
+    subimage(data: REGL.TextureImageData, x?: number, y?: number, z?: number, level?: number): REGL.Texture3D;
+    /* Replaces a subset of the image using creation `options`. */
+    subimage(options: Texture3DOptions, x?: number, y?: number, z?: number, level?: number): REGL.Texture3D;
+
+    /** Resizes the texture to `radius` x `radius`. */
+    resize(radius: number): REGL.Texture3D;
+    /** Resizes the texture to dimensions `width` x `height`. */
+    resize(width: number, height: number, depth: number): REGL.Texture3D;
   }
 
   type TextureImageData =

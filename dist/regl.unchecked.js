@@ -1533,18 +1533,23 @@ function isArrayLike (s) {
 var GL_COMPRESSED_TEXTURE_FORMATS = 0x86A3
 
 var GL_TEXTURE_2D$1 = 0x0DE1
+var GL_TEXTURE_3D = 0x806f
 var GL_TEXTURE_CUBE_MAP$1 = 0x8513
 var GL_TEXTURE_CUBE_MAP_POSITIVE_X$1 = 0x8515
 
-var GL_RGBA$1 = 0x1908
+var GL_RED = 0x1903
 var GL_ALPHA = 0x1906
 var GL_RGB = 0x1907
+var GL_RGBA$1 = 0x1908
+var GL_RG = 0x8227
 var GL_LUMINANCE = 0x1909
 var GL_LUMINANCE_ALPHA = 0x190A
 
 var GL_RGBA4 = 0x8056
 var GL_RGB5_A1 = 0x8057
 var GL_RGB565 = 0x8D62
+var GL_RG_INTEGER = 0x8228
+var GL_RED_INTEGER = 0x8d94
 
 var GL_UNSIGNED_SHORT_4_4_4_4 = 0x8033
 var GL_UNSIGNED_SHORT_5_5_5_1 = 0x8034
@@ -1582,6 +1587,7 @@ var GL_FLOAT$3 = 0x1406
 
 var GL_TEXTURE_WRAP_S = 0x2802
 var GL_TEXTURE_WRAP_T = 0x2803
+var GL_TEXTURE_WRAP_R = 0x8072
 
 var GL_REPEAT = 0x2901
 var GL_CLAMP_TO_EDGE = 0x812F
@@ -1631,8 +1637,12 @@ var CHANNELS_FORMAT = [
 var FORMAT_CHANNELS = {}
 FORMAT_CHANNELS[GL_LUMINANCE] =
 FORMAT_CHANNELS[GL_ALPHA] =
+FORMAT_CHANNELS[GL_RED] =
+FORMAT_CHANNELS[GL_RED_INTEGER] =
 FORMAT_CHANNELS[GL_DEPTH_COMPONENT] = 1
 FORMAT_CHANNELS[GL_DEPTH_STENCIL] =
+FORMAT_CHANNELS[GL_RG] =
+FORMAT_CHANNELS[GL_RG_INTEGER] =
 FORMAT_CHANNELS[GL_LUMINANCE_ALPHA] = 2
 FORMAT_CHANNELS[GL_RGB] =
 FORMAT_CHANNELS[GL_SRGB_EXT] = 3
@@ -1647,6 +1657,7 @@ var CANVAS_CLASS = objectName('HTMLCanvasElement')
 var OFFSCREENCANVAS_CLASS = objectName('OffscreenCanvas')
 var CONTEXT2D_CLASS = objectName('CanvasRenderingContext2D')
 var BITMAP_CLASS = objectName('ImageBitmap')
+var VIDEOFRAME_CLASS = objectName('VideoFrame')
 var IMAGE_CLASS = objectName('HTMLImageElement')
 var VIDEO_CLASS = objectName('HTMLVideoElement')
 
@@ -1727,6 +1738,10 @@ function isContext2D (object) {
 
 function isBitmap (object) {
   return classString(object) === BITMAP_CLASS
+}
+
+function isVideoFrame (object) {
+  return classString(object) === VIDEOFRAME_CLASS
 }
 
 function isImageElement (object) {
@@ -1811,7 +1826,7 @@ function transposeData (image, array, strideX, strideY, strideC, offset) {
   postConvert(image, data)
 }
 
-function getTextureSize (format, type, width, height, isMipmap, isCube) {
+function getTextureSize (format, type, width, height, isMipmap, isCube, depth) {
   var s
   if (typeof FORMAT_SIZES_SPECIAL[format] !== 'undefined') {
     // we have a special array for dealing with weird color formats such as RGB5A1
@@ -1832,15 +1847,18 @@ function getTextureSize (format, type, width, height, isMipmap, isCube) {
     while (w >= 1) {
       // we can only use mipmaps on a square image,
       // so we can simply use the width and ignore the height:
-      total += s * w * w
+      total += s * w * w * (depth === undefined ? 1 : w)
       w /= 2
     }
     return total
   } else {
-    return s * width * height
+    return s * width * height * (depth === undefined ? 1 : w)
   }
 }
 
+/**
+ * @param {WebGL2RenderingContext} gl
+ */
 function createTextureSet (
   gl, extensions, limits, reglPoll, contextState, stats, config) {
   // -------------------------------------------------------
@@ -1888,6 +1906,8 @@ function createTextureSet (
     'alpha': GL_ALPHA,
     'luminance': GL_LUMINANCE,
     'luminance alpha': GL_LUMINANCE_ALPHA,
+    'red': GL_RED,
+    'rg': GL_RG,
     'rgb': GL_RGB,
     'rgba': GL_RGBA$1,
     'rgba4': GL_RGBA4,
@@ -2004,15 +2024,18 @@ function createTextureSet (
   // internalformat
   var colorFormats = supportedFormats.reduce(function (color, key) {
     var glenum = textureFormats[key]
-    if (glenum === GL_LUMINANCE ||
-        glenum === GL_ALPHA ||
-        glenum === GL_LUMINANCE ||
-        glenum === GL_LUMINANCE_ALPHA ||
-        glenum === GL_DEPTH_COMPONENT ||
-        glenum === GL_DEPTH_STENCIL ||
-        (extensions.ext_srgb &&
-                (glenum === GL_SRGB_EXT ||
-                 glenum === GL_SRGB_ALPHA_EXT))) {
+    if (
+      glenum === GL_LUMINANCE ||
+      glenum === GL_ALPHA ||
+      glenum === GL_LUMINANCE ||
+      glenum === GL_LUMINANCE_ALPHA ||
+      glenum === GL_DEPTH_COMPONENT ||
+      glenum === GL_DEPTH_STENCIL ||
+      glenum === GL_RED ||
+      glenum === GL_RG ||
+      (extensions.ext_srgb &&
+        (glenum === GL_SRGB_EXT ||
+          glenum === GL_SRGB_ALPHA_EXT))) {
       color[glenum] = glenum
     } else if (glenum === GL_RGB5_A1 || key.indexOf('rgba') >= 0) {
       color[glenum] = GL_RGBA$1
@@ -2038,6 +2061,7 @@ function createTextureSet (
     // shape info
     this.width = 0
     this.height = 0
+    this.depth = 0
     this.channels = 0
   }
 
@@ -2054,6 +2078,7 @@ function createTextureSet (
 
     result.width = other.width
     result.height = other.height
+    result.depth = other.depth
     result.channels = other.channels
   }
 
@@ -2087,12 +2112,12 @@ function createTextureSet (
       
       
       
-      
       flags.type = textureTypes[type]
     }
 
     var w = flags.width
     var h = flags.height
+    var d = flags.depth
     var c = flags.channels
     var hasChannels = false
     if ('shape' in options) {
@@ -2104,8 +2129,17 @@ function createTextureSet (
         
         hasChannels = true
       }
+      if (options.shape.length === 4) {
+        d = options.shape[2]
+        c = options.shape[3]
+        
+        hasChannels = true
+      }
       
       
+      if (d !== undefined) {
+        
+      }
     } else {
       if ('radius' in options) {
         w = h = options.radius
@@ -2119,6 +2153,10 @@ function createTextureSet (
         h = options.height
         
       }
+      if ('depth' in options) {
+        d = options.depth
+        
+      }
       if ('channels' in options) {
         c = options.channels
         
@@ -2127,6 +2165,7 @@ function createTextureSet (
     }
     flags.width = w | 0
     flags.height = h | 0
+    flags.depth = d | 0
     flags.channels = c | 0
 
     var hasFormat = false
@@ -2199,6 +2238,9 @@ function createTextureSet (
       if ('y' in options) {
         image.yOffset = options.y | 0
       }
+      if ('z' in options) {
+        image.zOffset = options.z | 0
+      }
       if (isPixelData(options.data)) {
         data = options.data
       }
@@ -2270,6 +2312,11 @@ function createTextureSet (
       image.width = data.width
       image.height = data.height
       image.channels = 4
+    } else if (isVideoFrame(data)) {
+      image.element = data
+      image.width = data.codedWidth
+      image.height = data.codedHeight
+      image.channels = 4
     } else if (isImageElement(data)) {
       image.element = data
       image.width = data.naturalWidth
@@ -2325,20 +2372,36 @@ function createTextureSet (
 
     setFlags(info)
 
-    if (element) {
-      gl.texImage2D(target, miplevel, format, format, type, element)
-    } else if (info.compressed) {
-      gl.compressedTexImage2D(target, miplevel, internalformat, width, height, 0, data)
-    } else if (info.needsCopy) {
-      reglPoll()
-      gl.copyTexImage2D(
-        target, miplevel, format, info.xOffset, info.yOffset, width, height, 0)
+    if (target === GL_TEXTURE_3D) {
+      var depth = info.depth
+      if (element) {
+        throw new Error('Texture3D from element is not supported.')
+      } else if (info.compressed) {
+        throw new Error('Compressed Texture3D is not supported.')
+      } else if (info.needsCopy) {
+        throw new Error('Texture3D copy is not supported.')
+        // reglPoll()
+        // gl.copyTexSubImage3D(
+        //   target, miplevel, info.xOffset, info.yOffset, info.zOffset, width, height, depth, 0)
+      } else {
+        gl.texImage3D(target, miplevel, format, width, height, depth, 0, format, type, data || null)
+      }
     } else {
-      gl.texImage2D(target, miplevel, format, width, height, 0, format, type, data || null)
+      if (element) {
+        gl.texImage2D(target, miplevel, format, format, type, element)
+      } else if (info.compressed) {
+        gl.compressedTexImage2D(target, miplevel, internalformat, width, height, 0, data)
+      } else if (info.needsCopy) {
+        reglPoll()
+        gl.copyTexImage2D(
+          target, miplevel, format, info.xOffset, info.yOffset, width, height, 0)
+      } else {
+        gl.texImage2D(target, miplevel, format, width, height, 0, format, type, data || null)
+      }
     }
   }
 
-  function setSubImage (info, target, x, y, miplevel) {
+  function setSubImage (info, target, x, y, miplevel, z) {
     var element = info.element
     var data = info.data
     var internalformat = info.internalformat
@@ -2346,22 +2409,37 @@ function createTextureSet (
     var type = info.type
     var width = info.width
     var height = info.height
+    var depth = info.depth
 
     setFlags(info)
-
-    if (element) {
-      gl.texSubImage2D(
-        target, miplevel, x, y, format, type, element)
-    } else if (info.compressed) {
-      gl.compressedTexSubImage2D(
-        target, miplevel, x, y, internalformat, width, height, data)
-    } else if (info.needsCopy) {
-      reglPoll()
-      gl.copyTexSubImage2D(
-        target, miplevel, x, y, info.xOffset, info.yOffset, width, height)
+    if (target === GL_TEXTURE_3D) {
+      if (element) {
+        throw new Error('Texture3D from element is not supported')
+      } else if (info.compressed) {
+        throw new Error('Compressed Texture3D not supported')
+      } else if (info.needsCopy) {
+        reglPoll()
+        gl.copyTexSubImage3D(
+          target, miplevel, x, y, z, info.xOffset, info.yOffset, width, height)
+      } else {
+        gl.texSubImage3D(
+          target, miplevel, x, y, z, width, height, depth, format, type, data)
+      }
     } else {
-      gl.texSubImage2D(
-        target, miplevel, x, y, width, height, format, type, data)
+      if (element) {
+        gl.texSubImage2D(
+          target, miplevel, x, y, format, type, element)
+      } else if (info.compressed) {
+        gl.compressedTexSubImage2D(
+          target, miplevel, x, y, internalformat, width, height, data)
+      } else if (info.needsCopy) {
+        reglPoll()
+        gl.copyTexSubImage2D(
+          target, miplevel, x, y, info.xOffset, info.yOffset, width, height)
+      } else {
+        gl.texSubImage2D(
+          target, miplevel, x, y, width, height, format, type, data)
+      }
     }
   }
 
@@ -2392,11 +2470,12 @@ function createTextureSet (
     this.images = Array(16)
   }
 
-  function parseMipMapFromShape (mipmap, width, height) {
+  function parseMipMapFromShape (mipmap, width, height, depth) {
     var img = mipmap.images[0] = allocImage()
     mipmap.mipmask = 1
     img.width = mipmap.width = width
     img.height = mipmap.height = height
+    img.depth = mipmap.depth = depth
     img.channels = mipmap.channels = 4
   }
 
@@ -2416,6 +2495,9 @@ function createTextureSet (
           copyFlags(imgData, mipmap)
           imgData.width >>= i
           imgData.height >>= i
+          if (imgData.depth) {
+            imgData.depth >>= i
+          }
           parseImage(imgData, mipData[i])
           mipmap.mipmask |= (1 << i)
         }
@@ -2492,6 +2574,7 @@ function createTextureSet (
 
     this.wrapS = GL_CLAMP_TO_EDGE
     this.wrapT = GL_CLAMP_TO_EDGE
+    this.wrapR = GL_CLAMP_TO_EDGE
 
     this.anisotropic = 1
 
@@ -2517,16 +2600,21 @@ function createTextureSet (
 
     var wrapS = info.wrapS
     var wrapT = info.wrapT
+    var wrapR = info.wrapR
     if ('wrap' in options) {
       var wrap = options.wrap
       if (typeof wrap === 'string') {
         
-        wrapS = wrapT = wrapModes[wrap]
+        wrapS = wrapT = wrapR = wrapModes[wrap]
       } else if (Array.isArray(wrap)) {
         
         
         wrapS = wrapModes[wrap[0]]
         wrapT = wrapModes[wrap[1]]
+        if (wrap[2] !== undefined) {
+          
+          wrapR = wrapModes[wrap[2]]
+        }
       }
     } else {
       if ('wrapS' in options) {
@@ -2539,9 +2627,15 @@ function createTextureSet (
         
         wrapT = wrapModes[optWrapT]
       }
+      if ('wrapR' in options) {
+        var optWrapR = options.wrapR
+        
+        wrapR = wrapModes[optWrapR]
+      }
     }
     info.wrapS = wrapS
     info.wrapT = wrapT
+    info.wrapR = wrapR
 
     if ('anisotropic' in options) {
       var anisotropic = options.anisotropic
@@ -2583,6 +2677,9 @@ function createTextureSet (
     gl.texParameteri(target, GL_TEXTURE_MAG_FILTER, info.magFilter)
     gl.texParameteri(target, GL_TEXTURE_WRAP_S, info.wrapS)
     gl.texParameteri(target, GL_TEXTURE_WRAP_T, info.wrapT)
+    if (target === GL_TEXTURE_3D) {
+      gl.texParameteri(target, GL_TEXTURE_WRAP_R, info.wrapR)
+    }
     if (extensions.ext_texture_filter_anisotropic) {
       gl.texParameteri(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, info.anisotropic)
     }
@@ -2853,6 +2950,166 @@ function createTextureSet (
     return reglTexture2D
   }
 
+  function createTexture3D (a) {
+    var texture = new REGLTexture(GL_TEXTURE_3D)
+    textureSet[texture.id] = texture
+    stats.textureCount++
+
+    function reglTexture3D (a) {
+      var texInfo = texture.texInfo
+      TexInfo.call(texInfo)
+      var mipData = allocMipMap()
+
+      if (a) {
+        
+        parseTexInfo(texInfo, a)
+        parseMipMapFromObject(mipData, a)
+      } else {
+        // empty textures get assigned a default shape of 1x1
+        parseMipMapFromShape(mipData, 1, 1)
+      }
+
+      if (texInfo.genMipmaps) {
+        mipData.mipmask = (mipData.width << 1) - 1
+      }
+      texture.mipmask = mipData.mipmask
+
+      copyFlags(texture, mipData)
+
+      // check.texture2D(texInfo, mipData, limits)
+      texture.internalformat = mipData.internalformat
+
+      reglTexture3D.width = mipData.width
+      reglTexture3D.height = mipData.height
+      reglTexture3D.depth = mipData.depth
+
+      tempBind(texture)
+      setMipMap(mipData, GL_TEXTURE_3D)
+      setTexInfo(texInfo, GL_TEXTURE_3D)
+      tempRestore()
+
+      freeMipMap(mipData)
+
+      if (config.profile) {
+        texture.stats.size = getTextureSize(
+          texture.internalformat,
+          texture.type,
+          mipData.width,
+          mipData.height,
+          texInfo.genMipmaps,
+          false,
+          mipData.depth)
+      }
+      reglTexture3D.format = textureFormatsInvert[texture.internalformat]
+      reglTexture3D.type = textureTypesInvert[texture.type]
+
+      reglTexture3D.mag = magFiltersInvert[texInfo.magFilter]
+      reglTexture3D.min = minFiltersInvert[texInfo.minFilter]
+
+      reglTexture3D.wrapS = wrapModesInvert[texInfo.wrapS]
+      reglTexture3D.wrapT = wrapModesInvert[texInfo.wrapT]
+      reglTexture3D.wrapR = wrapModesInvert[texInfo.wrapR]
+
+      return reglTexture3D
+    }
+
+    function subimage (image, x_, y_, z_, level_) {
+      
+
+      var x = x_ | 0
+      var y = y_ | 0
+      var z = z_ | 0
+      var level = level_ | 0
+
+      var imageData = allocImage()
+      copyFlags(imageData, texture)
+      imageData.width = 0
+      imageData.height = 0
+      imageData.depth = 0
+      parseImage(imageData, image)
+      imageData.width = imageData.width || ((texture.width >> level) - x)
+      imageData.height = imageData.height || ((texture.height >> level) - y)
+      imageData.depth = imageData.depth || ((texture.depth >> level) - z)
+
+      
+      
+      
+      
+
+      tempBind(texture)
+      setSubImage(imageData, GL_TEXTURE_3D, x, y, level, z)
+      tempRestore()
+
+      freeImage(imageData)
+
+      return reglTexture3D
+    }
+
+    function resize (w_, h_, d_) {
+      var w = w_ | 0
+      var h = (h_ | 0) || w
+      var d = (d_ | 0) || w
+      if (w === texture.width && h === texture.height && d === texture.depth) {
+        return reglTexture3D
+      }
+
+      reglTexture3D.width = texture.width = w
+      reglTexture3D.height = texture.height = h
+      reglTexture3D.depth = texture.depth = d
+
+      tempBind(texture)
+
+      for (var i = 0; texture.mipmask >> i; ++i) {
+        var _w = w >> i
+        var _h = h >> i
+        var _d = d >> i
+        if (!_w || !_h) break
+        gl.texImage3D(
+          GL_TEXTURE_3D,
+          i,
+          texture.format,
+          _w,
+          _h,
+          _d,
+          0,
+          texture.format,
+          texture.type,
+          null)
+      }
+      tempRestore()
+
+      // also, recompute the texture size.
+      if (config.profile) {
+        texture.stats.size = getTextureSize(
+          texture.internalformat,
+          texture.type,
+          w,
+          h,
+          false,
+          false,
+          d
+        )
+      }
+
+      return reglTexture3D
+    }
+
+    reglTexture3D(a)
+
+    reglTexture3D.subimage = subimage
+    reglTexture3D.resize = resize
+    reglTexture3D._reglType = 'texture3d'
+    reglTexture3D._texture = texture
+    if (config.profile) {
+      reglTexture3D.stats = texture.stats
+    }
+    reglTexture3D.destroy = function () {
+      texture.decRef()
+    }
+
+    return reglTexture3D
+  }
+
   function createTextureCube (a0, a1, a2, a3, a4, a5) {
     var texture = new REGLTexture(GL_TEXTURE_CUBE_MAP$1)
     textureSet[texture.id] = texture
@@ -3119,6 +3376,7 @@ function createTextureSet (
 
   return {
     create2D: createTexture2D,
+    create3D: createTexture3D,
     createCube: createTextureCube,
     clear: destroyTextures,
     getTexture: function (wrapper) {
@@ -4685,16 +4943,13 @@ function wrapShaderState (gl, stringStore, stats, config) {
               gl.getUniformLocation(program, name),
               info))
           }
+        } else {
+          insertActiveInfo(uniforms, new ActiveInfo(
+            info.name,
+            stringStore.id(info.name),
+            gl.getUniformLocation(program, info.name),
+            info))
         }
-        var uniName = info.name
-        if (info.size > 1) {
-          uniName = uniName.replace('[0]', '')
-        }
-        insertActiveInfo(uniforms, new ActiveInfo(
-          uniName,
-          stringStore.id(uniName),
-          gl.getUniformLocation(program, uniName),
-          info))
       }
     }
 
@@ -5206,7 +5461,7 @@ var GL_FLOAT$7 = 5126
 var GL_FLOAT_VEC2 = 35664
 var GL_FLOAT_VEC3 = 35665
 var GL_FLOAT_VEC4 = 35666
-var GL_INT$2 = 5124
+var GL_INT$3 = 5124
 var GL_INT_VEC2 = 35667
 var GL_INT_VEC3 = 35668
 var GL_INT_VEC4 = 35669
@@ -5218,6 +5473,7 @@ var GL_FLOAT_MAT2 = 35674
 var GL_FLOAT_MAT3 = 35675
 var GL_FLOAT_MAT4 = 35676
 var GL_SAMPLER_2D = 35678
+var GL_SAMPLER_3D = 35679
 var GL_SAMPLER_CUBE = 35680
 
 var GL_TRIANGLES$1 = 4
@@ -6643,7 +6899,8 @@ function reglCore (
       } else if (typeof value === 'function') {
         var reglType = value._reglType
         if (reglType === 'texture2d' ||
-            reglType === 'textureCube') {
+            reglType === 'textureCube' ||
+            reglType === 'texture3d') {
           result = createStaticDecl(function (env) {
             return env.link(value)
           })
@@ -7366,25 +7623,12 @@ function reglCore (
     var shared = env.shared
     var GL = shared.gl
 
-    var definedArrUniforms = {}
     var infix
     for (var i = 0; i < uniforms.length; ++i) {
       var uniform = uniforms[i]
       var name = uniform.name
       var type = uniform.info.type
-      var size = uniform.info.size
       var arg = args.uniforms[name]
-      if (size > 1) {
-        // either foo[n] or foos, avoid define both
-        if (!arg) {
-          continue
-        }
-        var arrUniformName = name.replace('[0]', '')
-        if (definedArrUniforms[arrUniformName]) {
-          continue
-        }
-        definedArrUniforms[arrUniformName] = 1
-      }
       var UNIFORM = env.link(uniform)
       var LOCATION = UNIFORM + '.location'
 
@@ -7396,7 +7640,7 @@ function reglCore (
         if (isStatic(arg)) {
           var value = arg.value
           
-          if (type === GL_SAMPLER_2D || type === GL_SAMPLER_CUBE) {
+          if (type === GL_SAMPLER_2D || type === GL_SAMPLER_3D || type === GL_SAMPLER_CUBE) {
             
             var TEX_VALUE = env.link(value._texture || value.color[0]._texture)
             scope(GL, '.uniform1i(', LOCATION, ',', TEX_VALUE + '.bind());')
@@ -7420,11 +7664,7 @@ function reglCore (
           } else {
             switch (type) {
               case GL_FLOAT$7:
-                if (size === 1) {
-                  
-                } else {
-                  
-                }
+                
                 infix = '1f'
                 break
               case GL_FLOAT_VEC2:
@@ -7440,19 +7680,11 @@ function reglCore (
                 infix = '4f'
                 break
               case GL_BOOL:
-                if (size === 1) {
-                  
-                } else {
-                  
-                }
+                
                 infix = '1i'
                 break
-              case GL_INT$2:
-                if (size === 1) {
-                  
-                } else {
-                  
-                }
+              case GL_INT$3:
+                
                 infix = '1i'
                 break
               case GL_BOOL_VEC2:
@@ -7480,15 +7712,8 @@ function reglCore (
                 infix = '4i'
                 break
             }
-            if (size > 1) {
-              infix += 'v'
-              value = env.global.def('[' +
-              Array.prototype.slice.call(value) + ']')
-            } else {
-              value = isArrayLike(value) ? Array.prototype.slice.call(value) : value
-            }
             scope(GL, '.uniform', infix, '(', LOCATION, ',',
-              value,
+              isArrayLike(value) ? Array.prototype.slice.call(value) : value,
               ');')
           }
           continue
@@ -7522,13 +7747,14 @@ function reglCore (
       var unroll = 1
       switch (type) {
         case GL_SAMPLER_2D:
+        case GL_SAMPLER_3D:
         case GL_SAMPLER_CUBE:
           var TEX = scope.def(VALUE, '._texture')
           scope(GL, '.uniform1i(', LOCATION, ',', TEX, '.bind());')
           scope.exit(TEX, '.unbind();')
           continue
 
-        case GL_INT$2:
+        case GL_INT$3:
         case GL_BOOL:
           infix = '1i'
           break
@@ -7581,11 +7807,6 @@ function reglCore (
         case GL_FLOAT_MAT4:
           infix = 'Matrix4fv'
           break
-      }
-
-      if (infix.indexOf('Matrix') === -1 && size > 1) {
-        infix += 'v'
-        unroll = 1
       }
 
       if (infix.charAt(0) === 'M') {
@@ -9114,6 +9335,7 @@ function wrapREGL (args) {
       return elementState.create(options, false)
     },
     texture: textureState.create2D,
+    texture3D: textureState.create3D,
     cube: textureState.createCube,
     renderbuffer: renderbufferState.create,
     framebuffer: framebufferState.create,
