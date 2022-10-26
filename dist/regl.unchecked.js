@@ -1551,6 +1551,9 @@ var GL_RGB565 = 0x8D62
 var GL_RG_INTEGER = 0x8228
 var GL_RED_INTEGER = 0x8d94
 
+var GL_R16_EXT = 0x822a
+var GL_R16_SNORM_EXT = 0x8f98
+
 var GL_UNSIGNED_SHORT_4_4_4_4 = 0x8033
 var GL_UNSIGNED_SHORT_5_5_5_1 = 0x8034
 var GL_UNSIGNED_SHORT_5_6_5 = 0x8363
@@ -1639,6 +1642,8 @@ FORMAT_CHANNELS[GL_LUMINANCE] =
 FORMAT_CHANNELS[GL_ALPHA] =
 FORMAT_CHANNELS[GL_RED] =
 FORMAT_CHANNELS[GL_RED_INTEGER] =
+FORMAT_CHANNELS[GL_R16_EXT] =
+FORMAT_CHANNELS[GL_R16_SNORM_EXT] =
 FORMAT_CHANNELS[GL_DEPTH_COMPONENT] = 1
 FORMAT_CHANNELS[GL_DEPTH_STENCIL] =
 FORMAT_CHANNELS[GL_RG] =
@@ -1906,8 +1911,6 @@ function createTextureSet (
     'alpha': GL_ALPHA,
     'luminance': GL_LUMINANCE,
     'luminance alpha': GL_LUMINANCE_ALPHA,
-    'red': GL_RED,
-    'rg': GL_RG,
     'rgb': GL_RGB,
     'rgba': GL_RGBA$1,
     'rgba4': GL_RGBA4,
@@ -1918,16 +1921,29 @@ function createTextureSet (
   var compressedTextureFormats = {}
 
   if (extensions.ext_srgb) {
-    textureFormats.srgb = GL_SRGB_EXT
-    textureFormats.srgba = GL_SRGB_ALPHA_EXT
+    extend(textureFormats, {
+      'srgb': GL_SRGB_EXT,
+      'srgba': GL_SRGB_ALPHA_EXT,
+    })
   }
 
   if (extensions.oes_texture_float) {
-    textureTypes.float32 = textureTypes.float = GL_FLOAT$3
+    textureTypes['float32'] = textureTypes['float'] = GL_FLOAT$3
   }
 
   if (extensions.oes_texture_half_float) {
     textureTypes['float16'] = textureTypes['half float'] = GL_HALF_FLOAT_OES
+  }
+
+  if (extensions.ext_texture_norm16) {
+    extend(textureFormats, {
+      'r16': GL_R16_EXT,
+      'r16_snorm': GL_R16_SNORM_EXT
+    })
+
+    extend(textureTypes, {
+      'uint16': GL_UNSIGNED_SHORT$2,
+    })
   }
 
   if (extensions.webgl_depth_texture) {
@@ -2031,12 +2047,19 @@ function createTextureSet (
       glenum === GL_LUMINANCE_ALPHA ||
       glenum === GL_DEPTH_COMPONENT ||
       glenum === GL_DEPTH_STENCIL ||
-      glenum === GL_RED ||
-      glenum === GL_RG ||
-      (extensions.ext_srgb &&
-        (glenum === GL_SRGB_EXT ||
-          glenum === GL_SRGB_ALPHA_EXT))) {
+      (extensions.ext_srgb && (
+        glenum === GL_SRGB_EXT ||
+        glenum === GL_SRGB_ALPHA_EXT
+      ))
+    ) {
       color[glenum] = glenum
+    } else if (
+      extensions.ext_texture_norm16 && (
+        glenum === GL_R16_EXT ||
+        glenum === GL_R16_SNORM_EXT
+      )
+    ) {
+      color[glenum] = GL_RED
     } else if (glenum === GL_RGB5_A1 || key.indexOf('rgba') >= 0) {
       color[glenum] = GL_RGBA$1
     } else {
@@ -2171,6 +2194,7 @@ function createTextureSet (
     var hasFormat = false
     if ('format' in options) {
       var formatStr = options.format
+      
       
       
       var internalformat = flags.internalformat = textureFormats[formatStr]
@@ -2385,7 +2409,7 @@ function createTextureSet (
         // gl.copyTexSubImage3D(
         //   target, miplevel, info.xOffset, info.yOffset, info.zOffset, width, height, depth, 0)
       } else {
-        gl.texImage3D(target, miplevel, format, width, height, depth, 0, format, type, data || null)
+        gl.texImage3D(target, miplevel, internalformat, width, height, depth, 0, format, type, data || null)
       }
     } else {
       if (element) {
@@ -2395,9 +2419,9 @@ function createTextureSet (
       } else if (info.needsCopy) {
         reglPoll()
         gl.copyTexImage2D(
-          target, miplevel, format, info.xOffset, info.yOffset, width, height, 0)
+          target, miplevel, internalformat, info.xOffset, info.yOffset, width, height, 0)
       } else {
-        gl.texImage2D(target, miplevel, format, width, height, 0, format, type, data || null)
+        gl.texImage2D(target, miplevel, internalformat, width, height, 0, format, type, data || null)
       }
     }
   }
@@ -2911,7 +2935,7 @@ function createTextureSet (
         gl.texImage2D(
           GL_TEXTURE_2D$1,
           i,
-          texture.format,
+          texture.internalformat,
           _w,
           _h,
           0,
@@ -3068,7 +3092,7 @@ function createTextureSet (
         gl.texImage3D(
           GL_TEXTURE_3D,
           i,
-          texture.format,
+          texture.internalformat,
           _w,
           _h,
           _d,
@@ -3253,7 +3277,7 @@ function createTextureSet (
           gl.texImage2D(
             GL_TEXTURE_CUBE_MAP_POSITIVE_X$1 + i,
             j,
-            texture.format,
+            texture.internalformat,
             radius >> j,
             radius >> j,
             0,

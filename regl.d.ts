@@ -1114,10 +1114,6 @@ declare namespace REGL {
     "luminance" |
     /* `gl.LUMINANCE_ALPHA`; channels: 2; types: 'uint8', 'half float', 'float' */
     "luminance alpha" |
-    /* `gl.RED`; channels: 1; types: 'uint8', 'uint16', 'half float', 'float' */
-    "red" |
-    /* `gl.RG`; channels: 2; types: 'uint8', 'half float', 'float' */
-    "rg" |
     /* `gl.RGB`; channels: 3; types: 'uint8', 'half float', 'float' */
     "rgb" |
     /* `gl.RGBA`; channels: 4; types: 'uint8', 'half float', 'float' */
@@ -1159,7 +1155,11 @@ declare namespace REGL {
     /* `ext.COMPRESSED_RGBA_PVRTC_2BPPV1_IMG`; channels: 4; types: 'uint8' */
     "rgba pvrtc 2bppv1" |
     /* `ext.COMPRESSED_RGB_ETC1_WEBGL`; channels: 3; types: 'uint8' */
-    "rgb etc1";
+    "rgb etc1" |
+    /* Needs EXT_texture_norm16; channels: 1; types: 'uint16' */
+    "r16" |
+    /* Needs EXT_texture_norm16; channels: 1; types: 'int16' */
+    "r16_snorm";
 
   type TextureDataType =
     /* `gl.UNSIGNED_BYTE` */
