@@ -1313,6 +1313,7 @@ declare namespace REGL {
     /* Reinitializes the texture in place using creation `options`. */
     (options: REGL.Texture3DOptions): REGL.Texture3D;
 
+    depth: number
     /**
      * Replaces the part of texture with new data.
      *
